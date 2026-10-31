@@ -1,0 +1,31 @@
+# 环境变量与密钥
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# 模型权重
+models/
+*.bin
+*.safetensors
+
+# 前端
+node_modules/
+dist/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 运行产物
+*.log
+data/

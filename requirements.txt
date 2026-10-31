@@ -1,0 +1,30 @@
+# ===== LangChain / LangGraph（版本锁定，与 EduAgent 保持一致）=====
+langchain==1.2.10
+langchain-core==1.2.16
+langchain-community==0.4.1
+langchain-text-splitters==1.1.1
+langgraph==1.0.9
+langgraph-prebuilt==1.0.8
+langchain-openai==1.1.10
+
+# ===== 本地模型推理（RAG：BGE-M3 嵌入 + BGE-Reranker 精排）=====
+transformers==4.46.0
+sentence-transformers==3.3.1
+sentencepiece==0.2.1
+torch==2.5.1
+FlagEmbedding==1.3.4
+
+# ===== Web 框架 =====
+fastapi==0.133.0
+uvicorn[standard]==0.32.1
+sse-starlette==2.1.3
+
+# ===== 工具 =====
+httpx==0.28.1
+python-dotenv==1.0.1
+tenacity==9.0.0
+numpy==1.26.4
+
+# ===== 数据验证 =====
+pydantic==2.11.4
+pydantic-settings==2.11.0
