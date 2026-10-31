@@ -1,33 +1,59 @@
-# 环境变量与密钥
+# ---------- 环境变量与密钥 ----------
 .env
 .env.*
 !.env.example
 !.env.local.example
 
-# Python
+# ---------- Python ----------
 __pycache__/
 *.py[cod]
-.venv/
-venv/
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+
+# ---------- 测试与缓存 ----------
 .pytest_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
 
-# 模型权重
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+__pypackages__/
+
+# ---------- 模型权重 ----------
 models/
 *.bin
 *.safetensors
+*.pt
+*.onnx
 
-# 前端
+# ---------- 前端 ----------
 node_modules/
 dist/
+.vite/
 
-# IDE / 系统
+# ---------- IDE / 系统 ----------
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
 
-# 运行产物
+# ---------- 运行产物 ----------
 *.log
 data/
 *.bak
