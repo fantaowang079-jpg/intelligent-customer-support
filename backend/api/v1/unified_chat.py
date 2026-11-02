@@ -107,9 +107,11 @@ async def _find_pending_agent(customer_id: str, session_id: str, message: str) -
         return None
 
     sv = snapshot.values
-    # 订单状态机「未完成」判据：订单尚未查到（order_info 为空）且非「订单不存在」→ 仍在收集槽位
+    # 订单状态机「未完成」判据：还没成功查到订单（order_info 为空）。
+    # 无论上一轮是「缺槽位」还是「订单不存在」，只要新消息带了订单号/手机号，
+    # 都应回到订单图继续；上一轮已播报成功（order_info 非空）则不再劫持新话题。
     # 其它多轮 Agent 若需要挂起续跑，可在此追加同类判据。
-    if sv.get("order_info") is None and not sv.get("not_found", False):
+    if sv.get("order_info") is None:
         return "order"
 
     return None

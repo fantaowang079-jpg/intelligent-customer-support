@@ -19,6 +19,7 @@ class ComplaintState(TypedDict):
     # ── 情绪识别结果 ───────────────────────────────────────────
     risk_level: str          # normal / high
     reason:     str          # 判定依据
+    force_high: bool         # 调用方已判定高危（不可被情绪节点降级）
 
     # ── 回复与转人工 ───────────────────────────────────────────
     reply:             str

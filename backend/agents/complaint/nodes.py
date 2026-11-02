@@ -40,6 +40,10 @@ async def emotion_detect_node(state: ComplaintState) -> dict:
     if high_hit or emotion_hit:
         risk_level = "high"
         reason = f"命中高危/强情绪词：{(high_hit + emotion_hit)[:3]}"
+    elif state.get("force_high"):
+        # 路由侧（LLM/规则）已判定高危：只升不降，避免安全红线被文本规则降级
+        risk_level = "high"
+        reason = state.get("reason") or "路由判定为高危，保留人工介入"
     else:
         risk_level = "normal"
         reason = "情绪强度正常，先安抚处理"

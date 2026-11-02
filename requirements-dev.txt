@@ -1,0 +1,5 @@
+# 开发/测试依赖（在 requirements.txt 之外按需安装）
+# 回归测试不依赖 torch / 本地模型，LLM 与检索均使用 fake 注入
+pytest==9.2.0
+pytest-asyncio==1.4.1.post1
+httpx==0.28.1

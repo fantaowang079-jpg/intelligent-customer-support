@@ -3,7 +3,7 @@
 
 from typing import Optional
 
-from fastapi import Header
+from fastapi import Depends, Header, HTTPException
 
 DEFAULT_CUSTOMER_ID = "demo-customer"
 DEFAULT_TENANT_ID = "tenant_default"
@@ -23,3 +23,16 @@ async def get_current_user(
         "role": x_role or "customer",
         "tenant_id": DEFAULT_TENANT_ID,
     }
+
+
+async def require_agent(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """坐席权限校验：审批、接管等人工接口只能由 role=agent 调用。
+
+    注意：演示环境仍用 X-Role 头模拟身份，生产必须替换为 JWT / OAuth，
+    并从 token 中解析角色，不能信任客户端自报的 header。
+    """
+    if current_user.get("role") != "agent":
+        raise HTTPException(status_code=403, detail="需要人工坐席权限")
+    return current_user

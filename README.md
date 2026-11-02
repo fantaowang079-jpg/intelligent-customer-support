@@ -1,6 +1,6 @@
 # 智能客服中台 · CustomerService Agent
 
-> 基于 **LangGraph + FastAPI** 的多 Agent 客服系统：统一对话入口 → 意图路由 → 5 个业务 Agent，支持 RAG 问答、订单多轮查询、退换货人工审核与投诉升级，全链路 SSE 流式输出，内置三层容错兜底。
+> 基于 **LangGraph + FastAPI** 的多 Agent 客服系统：统一对话入口 → 意图路由 → 四类业务 Agent（FAQ / 订单 / 退换货 / 投诉），支持 RAG 问答、订单多轮查询、退换货人工审核与投诉升级，全链路 SSE 流式输出。
 
 个人练习项目，从零搭建并持续迭代。代码可运行，克隆后按下方「快速开始」即可启动。
 
@@ -47,12 +47,12 @@
 
 ---
 
-## 三、五个 Agent 的设计
+## 三、路由与四类业务 Agent 的设计
 
 | Agent | 解决的问题 | 技术范式 | 关键实现 |
 |---|---|---|---|
 | **意图路由** | 无效调用多、分流不准 | 规则 + LLM 双段 | 问候语等高频无信息量输入由规则直接返回，不进模型；未命中再走 LLM 路由，叠加高危词与紧急度 |
-| **FAQ 问答** | 政策类问题要准、要能溯源 | RAG | Milvus + BGE-M3 向量检索，BGE-Reranker 精排，答案强制附带引用来源；置信度低于阈值转人工 |
+| **FAQ 问答** | 政策类问题要准、要能溯源 | RAG | 进程内向量库（BGE-M3 嵌入 + numpy 余弦）+ 可选 BGE-Reranker 精排，答案强制附带引用来源；置信度低于阈值转人工；模型缺失时自动降级为关键词检索 |
 | **订单状态** | 用户只说「查订单」，没给单号 | 多轮状态机 | 槽位收集（订单号 / 手机号）→ 齐全后查询 → 播报；缺槽位时追问而非报错 |
 | **退换货** | 涉及退款金额，不能让模型自己决定 | Human-in-the-loop | 规则先审，金额超阈值强制人工；`interrupt` 挂起并持久化，人工审批后 `resume` 执行 |
 | **投诉升级** | 高危投诉漏判会酿成舆情 | 情绪识别 + HitL | 情绪与高危词判定，普通投诉走安抚话术，高危立即 `interrupt` 转人工坐席 |
@@ -79,15 +79,17 @@
 
 暂停态可查询、可审批、可恢复，审批记录可追溯——这类流程如果交给模型自由决策，出事时无法复盘。
 
-### 3. 三层容错
+### 3. 容错与降级
 
 | 层级 | 触发 | 处理 |
 |---|---|---|
-| 自动重试 | 网络抖动 / LLM 超时 | 间隔 1s / 3s，最多 2 次 |
+| 自动重试 | 网络抖动 / LLM 超时 | 间隔 1s / 3s，最多 2 次（`core/retry.py`） |
 | Agent 降级 | 重试仍失败 | 各 Agent 返回客服降级话术 |
 | 系统兜底 | 降级也失败 | 友好提示，保证任何情况下都有响应 |
 
-本地模型（BGE-M3 / Reranker）缺失时，FAQ 自动降级为关键词检索，服务仍可启动——**降级路径是实际验证过的，不是写在文档里的**。
+> 说明：重试 / 降级模块已在 `core/retry.py` 实现，当前主要供 `orchestrator` 使用；统一 SSE 聊天链路尚未全部接入，属于下一步优化项。
+
+本地模型（BGE-M3 / Reranker）缺失时，FAQ 自动降级为关键词检索，服务仍可启动——这条降级路径是实际生效的。
 
 ### 4. 可插拔的数据层
 
@@ -101,11 +103,10 @@
 |---|---|
 | 语言 / 框架 | Python 3.11、FastAPI |
 | Agent 编排 | LangChain、LangGraph（StateGraph / interrupt / Checkpointer） |
-| 检索 | Milvus、BGE-M3（稠密 + 稀疏）、BGE-Reranker |
+| 检索 | 进程内向量库（BGE-M3 嵌入 + numpy 余弦）、可选 BGE-Reranker |
 | 数据校验 | Pydantic |
 | 传输 | SSE 流式 |
 | 前端 | Vue 3 + Vite |
-| 其他 | Docker、Redis、PostgreSQL（预留） |
 
 ---
 
@@ -127,6 +128,16 @@ cd frontend && npm install && npm run dev
 
 > 本地模型权重不随仓库分发，放在 `backend/models/`。缺失时 FAQ 自动降级为关键词检索，不影响启动与其余 Agent 使用。
 
+### 运行测试
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+测试不依赖真实 LLM 与本地模型：LLM 用 fake 注入，检索用 stub 替换，覆盖投诉转人工、FAQ 多轮、
+订单槽位、坐席鉴权与订单归属五组回归场景。
+
 ---
 
 ## 七、接口
@@ -141,6 +152,9 @@ cd frontend && npm install && npm run dev
 | GET | `/api/v1/complaint/pending` | 待接管投诉列表 |
 | POST | `/api/v1/complaint/{id}/resolve` | 人工坐席接管 |
 | GET | `/health` | 健康检查 |
+
+> 身份通过 `X-Customer-Id` / `X-Role` 请求头模拟：`X-Role: agent` 才能访问待审批列表、审批详情、
+> 审批确认与投诉接管接口；客户角色调用会返回 403。订单查询会校验订单归属，只能查自己的订单。
 
 ### 验证示例
 
@@ -168,7 +182,7 @@ curl -X POST localhost:8000/api/v1/return/apply \
 backend/
 ├── main.py                 # FastAPI 入口（lifespan 内预热模型）
 ├── config.py               # 配置中心（从 .env.local 读取，禁止硬编码）
-├── dependencies.py         # 轻量身份识别（X-Customer-Id）
+├── dependencies.py         # 轻量身份识别 + 坐席权限校验（X-Customer-Id / X-Role）
 ├── core/                   # 地基：llm_factory / memory / retry / orchestrator
 │                           #       intent_router / knowledge_store / reranker
 ├── services/               # 可插拔数据层：order / after_sale / knowledge_seed（Mock）
@@ -176,6 +190,7 @@ backend/
 │                           # 每个 Agent 含 graph / nodes / state / prompts
 └── api/v1/                 # unified_chat / return_ / complaint
 frontend/                   # Vue3 对话页与坐席工作台
+tests/                      # P0 回归测试（无需真实 LLM / 本地模型）
 ```
 
 ---
@@ -184,8 +199,9 @@ frontend/                   # Vue3 对话页与坐席工作台
 
 - **知识库规模有限**：当前为种子数据，尚未做全量政策文档的分块重建与评测集回归。
 - **单实例部署**：Checkpointer 目前为内存实现，多 worker 会导致暂停态分裂，生产需换持久化后端并固定路由。
-- **缺少自动化测试**：以接口验证为主，尚未补 Agent 分支的单元测试。
-- **下一步**：补 RAGAS 离线评测、把暂停态落到 PostgreSQL、增加 Agent 级单测与回放能力。
+- **鉴权为演示级**：`X-Role` 由客户端自报，仅用于本地演示；生产必须替换为 JWT / OAuth，并从 token 解析角色。
+- **Mock 订单归属**：内置订单全部属于 `demo-customer`，换其他 customer id 查不到订单是预期行为。
+- **下一步**：统一 SSE 执行入口并接入重试/超时；补 RAGAS 离线评测、把暂停态落到 PostgreSQL。
 
 ---
 

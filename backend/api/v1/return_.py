@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from langgraph.types import Command
 
 from backend.agents.return_.graph import build_return_graph
-from backend.dependencies import get_current_user
+from backend.dependencies import get_current_user, require_agent
 from backend.core.memory import build_thread_id
 from backend.core.logger import get_logger
 from backend.services.order_service import get_order_service
@@ -113,8 +113,8 @@ async def apply_return(
 
 
 @router.get("/pending")
-async def list_pending(current_user: dict = Depends(get_current_user)):
-    """人工坐席获取所有待审批的申请（status=pending_review）。"""
+async def list_pending(current_user: dict = Depends(require_agent)):
+    """人工坐席获取所有待审批的申请（status=pending_review，仅坐席可见）。"""
     items = [
         {
             "application_id": a["application_id"],
@@ -130,8 +130,8 @@ async def list_pending(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/{application_id}/review")
-async def get_review(application_id: str, current_user: dict = Depends(get_current_user)):
-    """人工坐席读取 AI 规则审核详情（从 MemorySaver 读图暂停时的 State）。"""
+async def get_review(application_id: str, current_user: dict = Depends(require_agent)):
+    """人工坐席读取 AI 规则审核详情（从 MemorySaver 读图暂停时的 State，仅坐席可见）。"""
     app = _applications.get(application_id)
     if not app:
         raise HTTPException(status_code=404, detail="申请不存在")
@@ -156,9 +156,9 @@ async def get_review(application_id: str, current_user: dict = Depends(get_curre
 async def confirm_review(
     application_id: str,
     req: ConfirmRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_agent),
 ):
-    """人工审批：恢复 interrupt，触发 apply_decision → execute。"""
+    """人工审批：恢复 interrupt，触发 apply_decision → execute（仅坐席可调用）。"""
     if req.action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="action 只能为 approve 或 reject")
 
@@ -166,12 +166,21 @@ async def confirm_review(
     if not app:
         raise HTTPException(status_code=404, detail="申请不存在")
 
+    # 状态机校验：只有待审批的申请才能审批，避免重复 resume / 越权改单
+    if app["status"] != "pending_review":
+        raise HTTPException(
+            status_code=409,
+            detail=f"该申请当前状态为 {app['status']}，不可审批",
+        )
+
     config = {"configurable": {"thread_id": app["thread_id"]}}
     decision = {"action": req.action, "agent_id": current_user["user_id"], "note": req.note}
 
+    app["status"] = "reviewing"  # 并发请求先拦住
     try:
         result = await _graph.ainvoke(Command(resume=decision), config=config)
     except Exception as e:
+        app["status"] = "pending_review"  # 执行失败可重试
         logger.error("return.confirm_failed", application_id=application_id, error=str(e))
         raise HTTPException(status_code=500, detail=f"审批执行失败：{e}")
 

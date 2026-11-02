@@ -51,16 +51,17 @@ def _extract_order_no(text: str) -> str | None:
 
 
 async def extract_slots_node(state: OrderState) -> dict:
-    """从最新用户消息提取订单号/手机号，与已存槽位合并。"""
+    """从最新用户消息提取订单号/手机号；本轮显式给出的新值覆盖旧槽位。"""
     text = _last_user_text(state)
     updates: dict = {}
 
+    # 不能用「槽位为空才写入」：否则同一会话第二次查单永远复用第一个订单号
     new_order_no = _extract_order_no(text)
-    if new_order_no and not state.get("order_no"):
+    if new_order_no:
         updates["order_no"] = new_order_no
 
     new_phone = _extract_phone(text)
-    if new_phone and not state.get("phone"):
+    if new_phone:
         updates["phone"] = new_phone
 
     logger.info(
@@ -145,6 +146,8 @@ async def not_found_node(state: OrderState) -> dict:
         "reply": reply,
         "messages": [AIMessage(content=reply)],
         "structured_output": {"stage": "not_found", "reply": reply, "order_no": state.get("order_no")},
+        # 清掉错误订单号、保留手机号：下一轮用户直接报正确单号即可重查
+        "order_no": None,
     }
 
 
@@ -177,6 +180,10 @@ async def report_node(state: OrderState) -> dict:
         "structured_output": {
             "stage": "report",
             "reply": reply,
+            "order_no": order_info.get("order_no"),
             "order_info": order_info,
         },
+        # 本轮查询已完成：清空槽位，避免下一轮复用同一订单号
+        "order_no": None,
+        "phone":    None,
     }

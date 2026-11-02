@@ -78,6 +78,16 @@ class MockOrderService(OrderService):
         if not data:
             logger.warning("order_service.order_not_found", order_no=order_no)
             raise OrderNotFoundError(f"订单号 {order_no} 不存在")
+
+        # 归属校验（防 IDOR）：只能查自己的订单；对外统一返回「不存在」，避免单号枚举
+        if customer_id and data["customer_id"] != customer_id:
+            logger.warning(
+                "order_service.order_forbidden",
+                order_no=order_no,
+                customer_id=customer_id,
+            )
+            raise OrderNotFoundError("订单不存在或无权查看")
+
         logger.info("order_service.lookup", order_no=order_no, status=data["status"])
         return OrderInfo(
             order_no=data["order_no"],
